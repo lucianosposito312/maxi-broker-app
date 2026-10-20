@@ -1,0 +1,5 @@
+# Sitemap
+User-agent: *
+Allow: /
+
+Sitemap: https://maxi-broker-app.vercel.app/sitemap.xml
