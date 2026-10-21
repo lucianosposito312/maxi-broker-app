@@ -5,10 +5,7 @@
         1 0 0 0 0
         0 1 0 0 0
         0 0 1 0 0
-        1.8 -3.6 1.8 0 -0.6" result="keyed" />
-      <feComponentTransfer in="keyed">
-        <feFuncA type="linear" slope="4" intercept="0" />
-      </feComponentTransfer>
+        4 -8 4 0 1.2" />
     </filter>
   </defs>
   <image href="logoSinFondo.webp" x="0" y="0" width="500" height="500" preserveAspectRatio="xMidYMid meet" filter="url(#remove-green-background)" />
