@@ -73,6 +73,33 @@ const PaymentSuccess = () => {
     return () => { active = false; };
   }, [paymentId, courseId, statusParam, currentUser?.id]);
 
+  // If Mercado Pago first returns a pending status, keep checking with the server.
+  // The course is unlocked only when the verification function confirms approval.
+  useEffect(() => {
+    if (status !== 'pending' || !paymentId || !courseId || !currentUser?.id) return undefined;
+    let active = true;
+    const checkStatus = async () => {
+      try {
+        const result = await mercadoPagoService.verifyPayment(paymentId, courseId, currentUser);
+        if (!active) return;
+        if (result.success === true && result.status === 'approved') {
+          setStatus('success');
+          setMessage('Mercado Pago confirmó el pago y tu inscripción quedó habilitada.');
+        } else if (result.status === 'rejected') {
+          setStatus('failed');
+          setMessage('Mercado Pago rechazó la operación. No se habilitó el curso.');
+        }
+      } catch {
+        // A temporary verification issue should not change or grant access.
+      }
+    };
+    const intervalId = window.setInterval(checkStatus, 7000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [status, paymentId, courseId, currentUser?.id]);
+
   const handleLogout = () => {
     logoutAcademy();
     navigate('/academia');
