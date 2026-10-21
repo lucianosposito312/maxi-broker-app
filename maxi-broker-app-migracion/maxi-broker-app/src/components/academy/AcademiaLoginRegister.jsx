@@ -92,7 +92,7 @@ const AcademiaLoginRegister = ({ onSuccess, compact = false }) => {
                         <img 
                             src="/assets/AcademyLogoSinFondo.jpeg" 
                             alt="Academia Maxi Broker" 
-                            className={`${logoSize} object-contain`}
+                            className={`${logoSize} object-contain rounded-xl border border-white/20 shadow-sm`}
                         />
                     </div>
                     <h2 className={`${titleSize} font-serif text-gold-500 mb-1`}>
