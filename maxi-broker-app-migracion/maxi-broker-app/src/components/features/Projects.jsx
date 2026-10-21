@@ -114,6 +114,7 @@ const Projects = () => {
                                             images={project.images && project.images.length > 0 ? project.images : [project.image]}
                                             videos={project.videos || []}
                                             projectTitle={project.title}
+                                            fallbackImage={null}
                                         />
                                         <div className="absolute top-4 left-4 bg-forest-900 text-gold-500 text-xs font-bold px-3 py-1 uppercase tracking-wider z-10">
                                             {project.type}
