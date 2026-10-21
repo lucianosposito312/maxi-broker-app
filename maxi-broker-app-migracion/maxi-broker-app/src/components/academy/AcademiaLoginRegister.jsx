@@ -90,7 +90,7 @@ const AcademiaLoginRegister = ({ onSuccess, compact = false }) => {
                 <div className={`${headerPadding} text-center bg-gradient-to-r from-academy-blue-900 to-[#12243d]`}>
                     <div className="flex justify-center mb-2">
                         <img 
-                            src="/assets/AcademyLogoSinFondo.webp" 
+                            src="/assets/AcademyLogoSinFondo.jpeg" 
                             alt="Academia Maxi Broker" 
                             className={`${logoSize} object-contain`}
                         />
