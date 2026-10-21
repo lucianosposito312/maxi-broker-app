@@ -63,7 +63,7 @@ const AcademyNavBar = ({ onLogout }) => {
 
                     {/* Center: Logo */}
                     <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3">
-                        <img src="/assets/AcademyLogoSinFondo.webp" alt="Logo" className="h-16 w-auto rounded-full" />
+                        <img src="/assets/AcademyLogoSinFondo.webp" alt="Logo" className="h-16 w-auto object-contain" />
                         <h1 className="text-2xl font-serif text-academy-blue-900">
                             Academia <span className="text-gold-500">Maxi Broker</span>
                         </h1>
