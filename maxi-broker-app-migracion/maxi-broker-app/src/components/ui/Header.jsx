@@ -82,7 +82,7 @@ const Header = () => {
                     className="cursor-pointer relative z-50 select-none"
                 >
                     <img
-                        src="/assets/logoSinFondo.webp"
+                        src="/assets/logoSinFondo.svg"
                         alt="Maxi Broker Logo"
                         className={`transition-all duration-300 ${isScrolled ? 'md:h-32 h-24' : 'md:h-36 h-28'}`} // Option B desktop, Option A mobile
                     />
