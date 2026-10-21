@@ -22,7 +22,7 @@ const AcademyMobileMenu = ({ onLogout }) => {
             {/* Logo academia - solo visible en móvil */}
             <div className="md:hidden fixed top-4 left-4 z-50">
                 <Link to="/">
-                    <img src="/assets/logoSinFondo.webp" alt="Academia Maxi Broker" className="h-10 w-auto object-contain drop-shadow-sm" />
+                    <img src="/assets/AcademyLogoSinFondo.webp" alt="Academia Maxi Broker" className="h-10 w-auto object-contain drop-shadow-sm" />
                 </Link>
             </div>
 
