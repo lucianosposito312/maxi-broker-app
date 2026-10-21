@@ -176,7 +176,7 @@ const Academy = () => {
                             className="mb-8"
                         >
                             <img
-                                src="/assets/AcademyLogoSinFondo.webp"
+                                src="/assets/logoSinFondo.webp"
                                 alt="Academia Maxi Broker"
                                 className="w-48 md:w-64 h-auto object-contain"
                             />
