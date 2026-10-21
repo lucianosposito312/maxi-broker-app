@@ -1,18 +1,28 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Video, ImageOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const ImageCarousel = ({ images = [], videos = [], projectTitle }) => {
+const ImageCarousel = ({ images = [], videos = [], projectTitle, fallbackImage = null }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isOpen, setIsOpen] = useState(false);
 
     // Combine images and videos into a single media array
+    const validImages = (Array.isArray(images) ? images : []).filter(url => typeof url === 'string' && url.trim());
+    const validVideos = (Array.isArray(videos) ? videos : []).filter(url => typeof url === 'string' && url.trim());
     const media = [
-        ...images.map(url => ({ type: 'image', url })),
-        ...videos.map(url => ({ type: 'video', url }))
+        ...validImages.map(url => ({ type: 'image', url })),
+        ...validVideos.map(url => ({ type: 'video', url }))
     ];
 
-    if (media.length === 0) return null;
+    if (media.length === 0 && fallbackImage) media.push({ type: 'image', url: fallbackImage });
+    if (media.length === 0) {
+        return (
+            <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 border-b border-gray-200 flex flex-col items-center justify-center gap-3 text-gray-500" role="img" aria-label="Imagen de proyecto pendiente de cargar">
+                <ImageOff size={34} strokeWidth={1.5} />
+                <span className="text-xs font-medium uppercase tracking-wider">Imagen pendiente de cargar</span>
+            </div>
+        );
+    }
 
     const nextMedia = () => {
         setCurrentIndex((prev) => (prev + 1) % media.length);
