@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500">
+  <defs>
+    <filter id="remove-green-background" color-interpolation-filters="sRGB">
+      <feColorMatrix in="SourceGraphic" type="matrix" values="
+        1 0 0 0 0
+        0 1 0 0 0
+        0 0 1 0 0
+        1.8 -3.6 1.8 0 -0.6" result="keyed" />
+      <feComponentTransfer in="keyed">
+        <feFuncA type="linear" slope="4" intercept="0" />
+      </feComponentTransfer>
+    </filter>
+  </defs>
+  <image href="logoSinFondo.webp" x="0" y="0" width="500" height="500" preserveAspectRatio="xMidYMid meet" filter="url(#remove-green-background)" />
+</svg>
