@@ -16,7 +16,7 @@ const Footer = () => {
                 {/* Logo */}
                 <div className="mb-8">
                     <img
-                        src="/assets/logoSinFondo.svg?v=3"
+                        src="/assets/logoSinFondo.png?v=5"
                         alt="Maxi Broker"
                         className="h-32" // Increased size to match Header (Option A)
                     />
