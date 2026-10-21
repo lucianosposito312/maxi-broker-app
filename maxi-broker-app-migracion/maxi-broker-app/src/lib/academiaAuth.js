@@ -88,92 +88,95 @@ export const academiaAuth = {
      * @returns {Object} { success, user, error }
      */
     async register(name, email, phone, password) {
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        const normalizedPhone = String(phone || '').trim();
+
         try {
-            // Check if lead already exists by email
             const { data: existingLead, error: searchError } = await supabase
                 .from('leads')
                 .select('*')
-                .eq('email', email.toLowerCase())
-                .limit(1)
-                .single();
+                .eq('email', normalizedEmail)
+                .maybeSingle();
 
-            const hashedPassword = this.hashPassword(password);
+            if (searchError) throw searchError;
 
-            if (existingLead && !searchError) {
-                // Lead exists - update with new data
-                const updateData = {
-                    name: name || existingLead.name,
-                    phone: phone || existingLead.phone,
-                    password_hash: hashedPassword,
-                    updated_at: new Date().toISOString()
+            // Los leads de marketing pueden no ser cuentas de Academia todavía.
+            if (existingLead?.password_hash) {
+                return {
+                    success: false,
+                    error: 'Este usuario ya está registrado. Iniciá sesión con tu correo y contraseña.'
                 };
+            }
 
-                const { data, error } = await supabase
+            if (normalizedPhone) {
+                let phoneQuery = supabase
                     .from('leads')
-                    .update(updateData)
+                    .select('id,email')
+                    .eq('phone', normalizedPhone);
+                if (existingLead?.id) phoneQuery = phoneQuery.neq('id', existingLead.id);
+                const { data: phoneOwner, error: phoneError } = await phoneQuery.maybeSingle();
+                if (phoneError) throw phoneError;
+                if (phoneOwner) {
+                    return {
+                        success: false,
+                        error: 'Ese celular ya está asociado a otra cuenta. Revisá el número o iniciá sesión.'
+                    };
+                }
+            }
+
+            const now = new Date().toISOString();
+            const accountData = {
+                name: String(name || '').trim(),
+                email: normalizedEmail,
+                phone: normalizedPhone,
+                password_hash: this.hashPassword(String(password || '')),
+                updated_at: now
+            };
+
+            let data;
+            if (existingLead) {
+                const { data: updated, error } = await supabase
+                    .from('leads')
+                    .update(accountData)
                     .eq('id', existingLead.id)
                     .select()
                     .single();
-
-                if (error) {
-                    console.error('Error updating lead:', error);
-                    return {
-                        success: false,
-                        error: 'Error al actualizar los datos. Intenta nuevamente.'
-                    };
-                }
-
-                this.setSession(data);
-
-                return {
-                    success: true,
-                    user: data,
-                    isExisting: true
-                };
-            }
-
-            // Create new lead
-            const newLead = {
-                name,
-                email: email.toLowerCase(),
-                phone,
-                password_hash: hashedPassword,
-                status: ['Nuevo'],
-                downloaded_ebook: false,
-                created_at: new Date().toISOString()
-            };
-
-            const { data, error } = await supabase
-                .from('leads')
-                .insert([newLead])
-                .select()
-                .single();
-
-            if (error) {
-                console.error('Error creating lead:', error);
-                // Surface the actual Supabase error for debugging
-                const errorMessage = error.message || error.details || 'Error al registrar. Intenta nuevamente.';
-                console.error('Supabase error details:', JSON.stringify(error));
-                return {
-                    success: false,
-                    error: errorMessage.includes('row-level security')
-                        ? 'Error de permisos en la base de datos. Contacta al administrador.'
-                        : `Error al registrar: ${errorMessage}`
-                };
+                if (error) throw error;
+                data = updated;
+            } else {
+                const { data: created, error } = await supabase
+                    .from('leads')
+                    .insert([{
+                        ...accountData,
+                        status: ['Nuevo'],
+                        downloaded_ebook: false,
+                        created_at: now
+                    }])
+                    .select()
+                    .single();
+                if (error) throw error;
+                data = created;
             }
 
             this.setSession(data);
-
-            return {
-                success: true,
-                user: data,
-                isNew: true
-            };
+            return { success: true, user: data, isExisting: Boolean(existingLead), isNew: !existingLead };
         } catch (err) {
-            console.error('Register error:', err);
+            console.error('Register error:', err?.message || err?.code || 'unknown error');
+            if (err?.code === '23505') {
+                return {
+                    success: false,
+                    error: 'Ese correo o celular ya está registrado. Iniciá sesión o revisá los datos.'
+                };
+            }
+            if (err instanceof TypeError && /fetch/i.test(err.message || '')) {
+                return {
+                    success: false,
+                    error: 'No pudimos conectar con el servidor. Revisá tu conexión e intentá nuevamente.'
+                };
+            }
             return {
                 success: false,
-                error: 'Error al registrar. Intenta nuevamente.'
+                error: 'No se pudo completar el registro. Intentá nuevamente en unos minutos.'
             };
         }
     },
