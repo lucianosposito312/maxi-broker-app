@@ -88,7 +88,7 @@ const ProjectsManager = () => {
 
                 // Upload to Supabase Storage
                 const { data: uploadData, error: uploadError } = await supabase.storage
-                    .from('Proyectos (Academia Maxi Broker)')
+                    .from('Proyectos (MG Broker)')
                     .upload(fileName, file);
 
                 if (uploadError) {
@@ -99,7 +99,7 @@ const ProjectsManager = () => {
 
                 // Get public URL
                 const { data: { publicUrl } } = supabase.storage
-                    .from('Proyectos (Academia Maxi Broker)')
+                    .from('Proyectos (MG Broker)')
                     .getPublicUrl(fileName);
 
                 uploadedUrls.push(publicUrl);
