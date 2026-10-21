@@ -1,57 +1,82 @@
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+const parseResponse = async (response) => {
+  const body = await response.text();
+  if (!body) return {};
+  try { return JSON.parse(body); }
+  catch { throw new Error('El servidor devolvió una respuesta inválida.'); }
+};
+
+const invokeFunction = async (functionName, payload) => {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('La conexión con la Academia no está configurada. Contactá al administrador.');
+  }
+
+  let response;
+  try {
+    response = await fetch(`${SUPABASE_URL}/functions/v1/${functionName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error('No pudimos conectar con el servicio de pagos. Revisá tu conexión e intentá nuevamente.');
+    }
+    throw error;
+  }
+
+  const data = await parseResponse(response);
+  if (!response.ok) {
+    throw new Error(data.error || data.message || `Error de conexión (${response.status}).`);
+  }
+  return data;
+};
 
 export const mercadoPagoService = {
   async createPaymentPreference(course, user) {
-    try {
-      const baseUrl = window.location.origin;
-      const returnUrl = `${baseUrl}/academia/payment/success?course_id=${course.id}`;
-
-      const payload = {
-        courseId: String(course.id),
-        courseTitle: String(course.title),
-        price: Number(course.price),
-        userId: String(user.id),
-        userEmail: String(user.email),
-        returnUrl: String(returnUrl)
-      };
-
-      if (!payload.price || payload.price <= 0) {
-        throw new Error('El precio del curso es inválido');
-      }
-
-      console.log('[MercadoPago] Creating preference for:', payload);
-
-      const response = await fetch(`${SUPABASE_URL.replace(/\/$/, '')}/functions/v1/create-payment-preference`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'apikey': SUPABASE_ANON_KEY
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error('[MercadoPago] Edge Function Error:', data);
-        throw new Error(data.error || `Error al crear preferencia: ${response.status}`);
-      }
-
-      console.log('[MercadoPago] Preference created:', data);
-
-      if (!data.id) {
-        throw new Error('No se recibió el ID de preferencia de Mercado Pago');
-      }
-
-      return {
-        id: data.id,
-        init_point: data.init_point
-      };
-    } catch (error) {
-      console.error('[MercadoPago] Error:', error);
-      throw error;
+    if (!course?.id || !user?.id || !user?.email) {
+      throw new Error('Faltan datos de la cuenta o del curso para iniciar el pago.');
     }
+
+    const returnUrl = `${window.location.origin}/academia/payment/success?course_id=${encodeURIComponent(course.id)}`;
+    const data = await invokeFunction('create-payment-preference', {
+      courseId: String(course.id),
+      userId: String(user.id),
+      userEmail: String(user.email).trim().toLowerCase(),
+      returnUrl
+    });
+
+    if (!data.id || !data.init_point) {
+      throw new Error('Mercado Pago no devolvió el enlace de pago. Intentá nuevamente.');
+    }
+
+    let checkoutUrl;
+    try { checkoutUrl = new URL(data.init_point); }
+    catch { throw new Error('Mercado Pago devolvió un enlace de pago inválido.'); }
+    if (
+      checkoutUrl.protocol !== 'https:' ||
+      !/(^|\.)mercadopago\.com$|(^|\.)mercadopago\.com\.ar$/.test(checkoutUrl.hostname)
+    ) {
+      throw new Error('El enlace recibido no pertenece al sitio seguro de Mercado Pago.');
+    }
+
+    return { id: data.id, init_point: checkoutUrl.href };
+  },
+
+  async verifyPayment(paymentId, courseId, user) {
+    if (!paymentId || !courseId || !user?.id) {
+      throw new Error('Faltan datos para verificar el pago. No habilitamos el curso hasta confirmarlo.');
+    }
+    return invokeFunction('verify-payment', {
+      paymentId: String(paymentId),
+      courseId: String(courseId),
+      userId: String(user.id)
+    });
   }
 };
