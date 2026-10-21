@@ -3,7 +3,8 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CheckCircle, Loader2, XCircle, ArrowLeft, Clock } from 'lucide-react';
 import { useUser } from '../context/UserContext';
-import { enrollmentsService } from '../lib/coursesService';
+import { academiaAuth } from '../lib/academiaAuth';
+import { mercadoPagoService } from '../lib/mercadoPago';
 import AcademyNavBar from '../components/academy/AcademyNavBar';
 import AcademyMobileMenu from '../components/academy/AcademyMobileMenu';
 
@@ -12,107 +13,65 @@ const PaymentSuccess = () => {
   const navigate = useNavigate();
   const { academyUser, logoutAcademy } = useUser();
   const [status, setStatus] = useState('processing');
-  const [error, setError] = useState(null);
-
-
-  // Mercado Pago sends back: payment_id (or collection_id), status, course_id (from our back_urls)
+  const [message, setMessage] = useState('Estamos consultando a Mercado Pago para confirmar la operación.');
   const paymentId = searchParams.get('payment_id') || searchParams.get('collection_id');
   const courseId = searchParams.get('course_id');
-  const statusParam = searchParams.get('status') || searchParams.get('collection_status');
+  const statusParam = (searchParams.get('status') || searchParams.get('collection_status') || '').toLowerCase();
+  const currentUser = academyUser || academiaAuth.getSession();
 
   useEffect(() => {
-    if (!academyUser) {
-      navigate('/academia');
-      return;
-    }
-
+    let active = true;
     const processPayment = async () => {
-      if (statusParam === 'failure' || statusParam === 'rejected' || statusParam === 'null') {
+      if (!currentUser?.id) {
         setStatus('failed');
-        setError('El pago fue rechazado. Por favor intenta nuevamente.');
+        setMessage('Tu sesión no está disponible. Iniciá sesión en la Academia y revisá el estado de tu compra.');
         return;
       }
-
-      if (statusParam === 'pending' || statusParam === 'in_process') {
-        // Still create enrollment with pending status
-        if (courseId) {
-          try {
-            const isEnrolled = await enrollmentsService.isUserEnrolled(academyUser.id, courseId);
-            if (!isEnrolled) {
-              await enrollmentsService.createEnrollment({
-                user_id: academyUser.id,
-                course_id: courseId,
-                payment_status: 'pending',
-                payment_id: paymentId || `mp-pending-${Date.now()}`,
-                created_at: new Date().toISOString()
-              });
-            }
-          } catch (err) {
-            console.error('Error creating pending enrollment:', err);
-          }
-        }
-        setStatus('pending');
-        setError('El pago está siendo procesado. Te notificaremos cuando sea confirmado.');
+      if (statusParam === 'failure' || statusParam === 'rejected') {
+        setStatus('failed');
+        setMessage('Mercado Pago informó que el pago no se completó. Podés volver a intentarlo desde el curso.');
         return;
       }
-
       if (!courseId) {
         setStatus('failed');
-        setError('Información de pago inválida. No se recibió el ID del curso.');
+        setMessage('No recibimos el curso correspondiente a esta compra. No se habilitó ningún acceso.');
         return;
       }
-
-      // Status is approved (or not explicitly set, assume success if we have course_id)
-      const resolvedPaymentId = paymentId || `mp-${Date.now()}`;
+      if (!paymentId) {
+        if (statusParam === 'pending' || statusParam === 'in_process') {
+          setStatus('pending');
+          setMessage('Mercado Pago todavía no envió un identificador de pago para verificar. No se habilitó el curso.');
+        } else {
+          setStatus('failed');
+          setMessage('No recibimos el identificador de la operación para verificarla. Por seguridad, el curso no se habilitó. Si ya pagaste, contactá al soporte con tu comprobante.');
+        }
+        return;
+      }
 
       try {
         setStatus('processing');
-
-        const isEnrolled = await enrollmentsService.isUserEnrolled(academyUser.id, courseId);
-
-        if (isEnrolled) {
+        const result = await mercadoPagoService.verifyPayment(paymentId, courseId, currentUser);
+        if (!active) return;
+        if (result.status === 'approved' && result.success === true) {
           setStatus('success');
-          return;
+          setMessage('Mercado Pago confirmó el pago y tu inscripción quedó habilitada.');
+        } else if (['pending', 'in_process', 'authorized'].includes(result.status)) {
+          setStatus('pending');
+          setMessage('Mercado Pago todavía está procesando el pago. El curso se habilitará cuando la operación figure como aprobada.');
+        } else {
+          setStatus('failed');
+          setMessage('Mercado Pago no confirmó un pago aprobado. No se habilitó el curso. Podés revisar la operación o volver a intentarlo.');
         }
-
-        await enrollmentsService.createEnrollment({
-          user_id: academyUser.id,
-          course_id: courseId,
-          payment_status: 'paid',
-          payment_id: resolvedPaymentId,
-          paid_at: new Date().toISOString(),
-          created_at: new Date().toISOString()
-        });
-
-        setStatus('success');
       } catch (err) {
-        console.error('Error processing payment:', err);
+        console.error('Payment verification failed:', err?.message || 'unknown error');
+        if (!active) return;
         setStatus('failed');
-        setError('Hubo un error al procesar tu inscripción. Contacta al soporte.');
+        setMessage(err.message || 'No pudimos verificar el pago. El curso no se habilitó; contactá al soporte si el dinero ya fue debitado.');
       }
     };
-
     processPayment();
-  }, [paymentId, courseId, statusParam, academyUser, navigate]);
-
-  useEffect(() => {
-    if (status !== 'pending') return;
-
-    // For pending payments, periodically check if webhook confirmed it
-    const checkEnrollment = async () => {
-      try {
-        const isEnrolled = await enrollmentsService.isUserEnrolled(academyUser.id, courseId);
-        if (isEnrolled) {
-          setStatus('success');
-        }
-      } catch (err) {
-        console.error('Error checking enrollment:', err);
-      }
-    };
-
-    const interval = setInterval(checkEnrollment, 5000);
-    return () => clearInterval(interval);
-  }, [status, academyUser, courseId]);
+    return () => { active = false; };
+  }, [paymentId, courseId, statusParam, currentUser?.id]);
 
   const handleLogout = () => {
     logoutAcademy();
@@ -122,78 +81,20 @@ const PaymentSuccess = () => {
   if (status === 'processing') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl shadow-xl p-8 text-center max-w-md mx-4"
-        >
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl p-8 text-center max-w-md mx-4">
           <Loader2 className="w-16 h-16 text-gold-500 animate-spin mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Procesando pago...</h2>
-          <p className="text-gray-600">Por favor espera mientras confirmamos tu pago</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Verificando tu pago...</h2>
+          <p className="text-gray-600">{message}</p>
         </motion.div>
       </div>
     );
   }
 
-  if (status === 'pending') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-        <AcademyNavBar onLogout={handleLogout} />
-        <AcademyMobileMenu onLogout={handleLogout} />
-        <div className="pt-24 pb-12 px-4">
-          <div className="max-w-md mx-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white rounded-2xl shadow-xl p-8 text-center"
-            >
-              <Clock className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Pago en proceso</h2>
-              <p className="text-gray-600 mb-6">
-                Tu pago está siendo procesado. En breve recibirás un email de confirmación o te contactaremos.
-              </p>
-              <Link
-                to="/academia"
-                className="inline-flex items-center gap-2 bg-academy-blue-900 hover:bg-gold-500 text-white font-semibold py-3 px-6 rounded-lg transition-all"
-              >
-                <ArrowLeft size={20} />
-                Volver a la Academia
-              </Link>
-            </motion.div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (status === 'failed') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-        <AcademyNavBar onLogout={handleLogout} />
-        <AcademyMobileMenu onLogout={handleLogout} />
-        <div className="pt-24 pb-12 px-4">
-          <div className="max-w-md mx-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white rounded-2xl shadow-xl p-8 text-center"
-            >
-              <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Pago fallido</h2>
-              <p className="text-gray-600 mb-6">{error}</p>
-              <Link
-                to="/academia"
-                className="inline-flex items-center gap-2 bg-academy-blue-900 hover:bg-gold-500 text-white font-semibold py-3 px-6 rounded-lg transition-all"
-              >
-                <ArrowLeft size={20} />
-                Volver a la Academia
-              </Link>
-            </motion.div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const isPending = status === 'pending';
+  const isSuccess = status === 'success';
+  const Icon = isSuccess ? CheckCircle : isPending ? Clock : XCircle;
+  const iconClass = isSuccess ? 'text-green-500' : isPending ? 'text-yellow-500' : 'text-red-500';
+  const title = isSuccess ? '¡Pago confirmado!' : isPending ? 'Pago en proceso' : 'No pudimos confirmar el pago';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
@@ -201,29 +102,20 @@ const PaymentSuccess = () => {
       <AcademyMobileMenu onLogout={handleLogout} />
       <div className="pt-24 pb-12 px-4">
         <div className="max-w-md mx-auto">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-xl p-8 text-center"
-          >
-            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Pago exitoso!</h2>
-            <p className="text-gray-600 mb-6">Ya puedes acceder a tu curso</p>
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <Icon className={`w-16 h-16 ${iconClass} mx-auto mb-4`} />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">{title}</h2>
+            <p className="text-gray-600 mb-6">{message}</p>
             <div className="space-y-3">
-              <Link
-                to="/academia"
-                className="block w-full bg-academy-blue-900 hover:bg-gold-500 text-white font-semibold py-3 px-6 rounded-lg transition-all"
-              >
-                Ir a la Academia
-              </Link>
-              {courseId && (
-                <Link
-                  to={`/academia/course/${courseId}`}
-                  className="block w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-6 rounded-lg transition-all"
-                >
+              {isSuccess && courseId && (
+                <Link to={`/academia/course/${courseId}`} className="block w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition-all">
                   Ir al Curso
                 </Link>
               )}
+              <Link to="/academia" className="inline-flex items-center justify-center gap-2 w-full bg-academy-blue-900 hover:bg-gold-500 text-white font-semibold py-3 px-6 rounded-lg transition-all">
+                <ArrowLeft size={20} />
+                Volver a la Academia
+              </Link>
             </div>
           </motion.div>
         </div>
